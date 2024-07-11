@@ -104,9 +104,7 @@ contract DEX {
 		uint256 xInputWithFee = xInput.mul(997);
 		uint256 numerator = xInputWithFee.mul(yReserves);
 		uint256 denominator = xReserves.mul(1000).add(xInputWithFee);
-		yOutput = numerator / denominator;
-		return yOutput;
-		// yReserves - (xReserves * yReserves) / (xReserves + xInput);
+		return numerator / denominator;
 	}
 
 	/**
@@ -118,21 +116,45 @@ contract DEX {
 	function getLiquidity(address lp) public view returns (uint256) {}
 
 	/**
-	 * @notice sends Ether to DEX in exchange for $BAL
+	 * @notice Sends Ether to DEX in exchange for $BAL tokens.
+	 * @return tokenOutput Amount of $BAL tokens received.
 	 */
-	function ethToToken(
-		uint256 amountETH
-	) public payable returns (uint256 tokenOutput) {
-		tokenOutput = price(amountETH, totalLiquidity, totalLiquidity);
-		return tokenOutput;
+	function ethToToken() external payable returns (uint256 tokenOutput) {
+		if (msg.value == 0) revert InsufficientInput();
+		// Calculate token output based on current liquidity and token reserves
+		uint256 token_reserve = token.balanceOf(address(this));
+		uint256 tokens_bought = price(
+			msg.value,
+			address(this).balance.sub(msg.value),
+			token_reserve
+		);
+		// Transfer the calculated amount of token to the user
+		if (!token.transfer(msg.sender, tokens_bought)) revert TransferFailed();
+		emit EthToTokenSwap(msg.sender, tokens_bought, msg.value);
+		return tokens_bought;
 	}
 
 	/**
-	 * @notice sends $BAL tokens to DEX in exchange for Ether
+	 * @notice Sends $BAL tokens to DEX in exchange for Ether.
+	 * @param tokenInput Amount of $BAL tokens to exchange for Ether.
+	 * @return ethOutput Amount of Ether received.
 	 */
-	function tokenToEth(
-		uint256 tokenInput
-	) public returns (uint256 ethOutput) {}
+	function tokenToEth(uint256 tokenInput) public returns (uint256 ethOutput) {
+		uint256 token_reserve = token.balanceOf(address(this));
+		uint256 eth_bought = price(
+			tokenInput,
+			token_reserve,
+			address(this).balance
+		);
+		// Transfer the calculated amount of token from user to the contract
+		if (!token.transferFrom(msg.sender, address(this), tokenInput))
+			revert TransferFailed();
+		// Transfer the calculated amount of Ether from contract to the user
+		(bool success, ) = msg.sender.call{ value: eth_bought }("");
+		require(success, "TransferFailed");
+		emit TokenToEthSwap(msg.sender, tokenInput, eth_bought);
+		return eth_bought;
+	}
 
 	/**
 	 * @notice allows deposits of $BAL and $ETH to liquidity pool
