@@ -122,16 +122,13 @@ contract DEX {
 	function ethToToken() external payable returns (uint256 tokenOutput) {
 		if (msg.value == 0) revert InsufficientInput();
 		// Calculate token output based on current liquidity and token reserves
+		uint256 eth_reserve = address(this).balance - msg.value;
 		uint256 token_reserve = token.balanceOf(address(this));
-		uint256 tokens_bought = price(
-			msg.value,
-			address(this).balance.sub(msg.value),
-			token_reserve
-		);
+		tokenOutput = price(msg.value, eth_reserve, token_reserve);
 		// Transfer the calculated amount of token to the user
-		if (!token.transfer(msg.sender, tokens_bought)) revert TransferFailed();
-		emit EthToTokenSwap(msg.sender, tokens_bought, msg.value);
-		return tokens_bought;
+		if (!token.transfer(msg.sender, tokenOutput)) revert TransferFailed();
+		emit EthToTokenSwap(msg.sender, tokenOutput, msg.value);
+		return tokenOutput;
 	}
 
 	/**
@@ -141,19 +138,16 @@ contract DEX {
 	 */
 	function tokenToEth(uint256 tokenInput) public returns (uint256 ethOutput) {
 		uint256 token_reserve = token.balanceOf(address(this));
-		uint256 eth_bought = price(
-			tokenInput,
-			token_reserve,
-			address(this).balance
-		);
+		uint256 eth_reserve = address(this).balance;
+		ethOutput = price(tokenInput, token_reserve, eth_reserve);
 		// Transfer the calculated amount of token from user to the contract
 		if (!token.transferFrom(msg.sender, address(this), tokenInput))
 			revert TransferFailed();
 		// Transfer the calculated amount of Ether from contract to the user
-		(bool success, ) = msg.sender.call{ value: eth_bought }("");
+		(bool success, ) = msg.sender.call{ value: ethOutput }("");
 		require(success, "TransferFailed");
-		emit TokenToEthSwap(msg.sender, tokenInput, eth_bought);
-		return eth_bought;
+		emit TokenToEthSwap(msg.sender, tokenInput, ethOutput);
+		return ethOutput;
 	}
 
 	/**
