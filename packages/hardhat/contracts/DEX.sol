@@ -156,7 +156,28 @@ contract DEX {
 	 * NOTE: user has to make sure to give DEX approval to spend their tokens on their behalf by calling approve function prior to this function call.
 	 * NOTE: Equal parts of both assets will be removed from the user's wallet with respect to the price outlined by the AMM.
 	 */
-	function deposit() public payable returns (uint256 tokensDeposited) {}
+	function deposit() public payable returns (uint256 tokensDeposited) {
+		if (msg.value == 0) revert InsufficientInput();
+		uint256 eth_reserve = address(this).balance.sub(msg.value);
+		uint256 token_reserve = token.balanceOf(address(this));
+		uint256 tokenDeposit;
+		uint256 liquidityMinted;
+		if (eth_reserve == 0 || token_reserve == 0)
+			revert InsufficientLiquidity();
+		tokenDeposit = msg.value.mul(token_reserve).div(eth_reserve).add(1);
+		liquidityMinted = msg.value.mul(totalLiquidity).div(eth_reserve);
+		liquidity[msg.sender] += liquidityMinted;
+		totalLiquidity += liquidityMinted;
+		if (!token.transferFrom(msg.sender, address(this), tokenDeposit))
+			revert TransferFailed();
+		emit LiquidityProvided(
+			msg.sender,
+			liquidityMinted,
+			msg.value,
+			tokenDeposit
+		);
+		return tokenDeposit;
+	}
 
 	/**
 	 * @notice allows withdrawal of $BAL and $ETH from liquidity pool
@@ -164,5 +185,22 @@ contract DEX {
 	 */
 	function withdraw(
 		uint256 amount
-	) public returns (uint256 eth_amount, uint256 token_amount) {}
+	) public returns (uint256 eth_amount, uint256 token_amount) {
+		if (amount > liquidity[msg.sender]) revert InsufficientInput();
+		uint256 eth_reserve = address(this).balance;
+		uint256 token_reserve = token.balanceOf(address(this));
+		uint256 ethWithdrawn;
+		uint256 tokenAmount;
+		ethWithdrawn = amount.mul(eth_reserve).div(totalLiquidity);
+		tokenAmount = amount.mul(token_reserve).div(totalLiquidity);
+		liquidity[msg.sender] -= ethWithdrawn;
+		totalLiquidity -= ethWithdrawn;
+		// Transfer the calculated amount of Ether from contract to the user
+		(bool success, ) = msg.sender.call{ value: ethWithdrawn }("");
+		require(success, "TransferFailed");
+		// Transfer the calculated amount of Token from contract to the user
+		require(token.transfer(msg.sender, tokenAmount));
+		emit LiquidityRemoved(msg.sender, amount, tokenAmount, ethWithdrawn);
+		return (ethWithdrawn, tokenAmount);
+	}
 }
