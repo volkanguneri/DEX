@@ -30,6 +30,12 @@ const Events: NextPage = () => {
     fromBlock: 0n,
   });
 
+  // const { data: approvalEvents, isLoading: isApprovalEventsLoading } = useScaffoldEventHistory({
+  //   contractName: "IERC20",
+  //   eventName: "Approval",
+  //   fromBlock: 0n,
+  // });
+
   return (
     <>
       <div className="flex items-center flex-col flex-grow pt-10">
